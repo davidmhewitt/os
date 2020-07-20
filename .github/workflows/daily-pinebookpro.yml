@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: debian:latest
+      image: ubuntu:latest
       volumes:
         - /proc:/proc
       options: --privileged
