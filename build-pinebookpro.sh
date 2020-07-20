@@ -14,7 +14,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev xz-utils
 
 tfaver=2.3
 ubootver=2020.07
@@ -50,7 +50,7 @@ cd "${basedir}"
 # Make sure cross-running ARM ELF executables is enabled
 update-binfmts --enable
 
-export packages="elementary-minimal"
+export packages="elementary-minimal initramfs-tools"
 export architecture="arm64"
 export codename="focal"
 export channel="daily"
@@ -187,7 +187,7 @@ echo "UUID=$UUID /               ext3    errors=remount-ro 0       1" >> "${base
 
 mkdir ${work_dir}/boot/extlinux/
 
-cat << '__EOF__' > ${work_dir}/boot/extlinux/
+cat << '__EOF__' > ${work_dir}/boot/extlinux/extlinux.conf
 LABEL elementary ARM
 KERNEL /Image
 FDT /dtbs/rockchip/rk3399-pinebook-pro.dtb
@@ -213,5 +213,21 @@ umount ${rootp}
 kpartx -dv ${loopdevice}
 losetup -d ${loopdevice}
 
-ls -lah "${basedir}"
+echo "Compressing ${imagename}.img"
+xz -z "${basedir}"/${imagename}.img
+
+KEY="$1"
+SECRET="$2"
+ENDPOINT="$3"
+BUCKET="$4"
+IMGPATH="${basedir}"/${imagename}.img.xz
+IMGNAME=$(basename "$IMGPATH")
+
+apt-get install -y curl python3 python3-distutils
+
+curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+python3 get-pip.py
+pip install boto3
+
+python3 upload.py "$KEY" "$SECRET" "$ENDPOINT" "$BUCKET" "$IMGPATH" "$IMGNAME" || exit 1
 
