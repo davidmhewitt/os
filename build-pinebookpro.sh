@@ -37,6 +37,6 @@ patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0003-rk3399-light-pinebook-p
 sed -i s/"CONFIG_BOOTDELAY=3"/"CONFIG_BOOTDELAY=0"/g configs/pinebook-pro-rk3399_defconfig
 
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
-CROSS_COMPILE=aarch64-linux-gnu- pinebook-pro-rk3399_defconfig
+CROSS_COMPILE=aarch64-linux-gnu- make pinebook-pro-rk3399_defconfig
 echo 'CONFIG_IDENT_STRING=" elementary ARM"' >> .config
 CROSS_COMPILE=aarch64-linux-gnu- make
