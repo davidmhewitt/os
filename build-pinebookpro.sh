@@ -2,6 +2,9 @@
 
 set -e
 
+# Size of .img file to build in MB. Approx 4GB required at this time, the rest is free space on /
+size=5000
+
 rootdir=`pwd`
 basedir=`pwd`/pinebook-pro
 
@@ -15,6 +18,7 @@ apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi 
 
 tfaver=2.3
 ubootver=2020.07
+imagename=elementary-pbp
 
 wget "https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git/snapshot/trusted-firmware-a-$tfaver.tar.gz"
 wget "ftp://ftp.denx.de/pub/u-boot/u-boot-${ubootver}.tar.bz2"
@@ -59,4 +63,86 @@ cp /usr/bin/qemu-arm-static elementary-$architecture/usr/bin/
 
 # Run the second stage of the bootstrap in QEMU
 LANG=C chroot elementary-$architecture /debootstrap/debootstrap --second-stage
+
+# Add the rest of the ubuntu repos
+cat << EOF > elementary-$architecture/etc/apt/sources.list
+deb http://ports.ubuntu.com/ubuntu-ports $codename main restricted universe multiverse
+deb http://ports.ubuntu.com/ubuntu-ports $codename-updates main restricted universe multiverse
+EOF
+
+# Copy in the elementary PPAs/keys/apt config
+for f in ${rootdir}/etc/config/archives/*.list; do cp -- "$f" "elementary-$architecture/etc/apt/sources.list.d/$(basename -- $f)"; done
+for f in ${rootdir}/etc/config/archives/*.key; do cp -- "$f" "elementary-$architecture/etc/apt/trusted.gpg.d/$(basename -- $f).asc"; done
+for f in ${rootdir}/etc/config/archives/*.pref; do cp -- "$f" "elementary-$architecture/etc/apt/preferences.d/$(basename -- $f)"; done
+
+# Set codename/channel in added repos
+sed -i "s/@CHANNEL/$channel/" elementary-$architecture/etc/apt/sources.list.d/*.list*
+sed -i "s/@BASECODENAME/$codename/" elementary-$architecture/etc/apt/sources.list.d/*.list*
+
+echo "elementary" > elementary-$architecture/etc/hostname
+
+cat << EOF > elementary-${architecture}/etc/hosts
+127.0.0.1       elementary    localhost
+::1             localhost ip6-localhost ip6-loopback
+fe00::0         ip6-localnet
+ff00::0         ip6-mcastprefix
+ff02::1         ip6-allnodes
+ff02::2         ip6-allrouters
+EOF
+
+mount -t proc proc elementary-$architecture/proc
+mount -o bind /dev/ elementary-$architecture/dev/
+mount -o bind /dev/pts elementary-$architecture/dev/pts
+
+# Make a third stage that installs all of the metapackages
+cat << EOF > elementary-$architecture/third-stage
+#!/bin/bash
+apt-get update
+apt-get --yes upgrade
+apt-get --yes install $packages
+rm -f /third-stage
+EOF
+
+chmod +x elementary-$architecture/third-stage
+LANG=C chroot elementary-$architecture /third-stage
+
+# Create the disk and partition it
+echo "Creating image file"
+dd if=/dev/zero of=${basedir}/${imagename}.img bs=1M count=$size
+parted ${imagename}.img --script -- mklabel msdos
+parted ${imagename}.img --script -- mkpart primary ext3 32M 100%
+
+# Set the partition variables
+loopdevice=`losetup -f --show "${basedir}"/${imagename}.img`
+device=`kpartx -va ${loopdevice} | sed 's/.*\(loop[0-9]\+\)p.*/\1/g' | head -1`
+sleep 5
+device="/dev/mapper/${device}"
+rootp=${device}p1
+
+# Create file systems
+mkfs.ext3 ${rootp}
+
+# Create the dirs for the partitions and mount them
+mkdir -p "${basedir}"/root
+mount ${rootp} "${basedir}"/root
+
+# Create an fstab so that we don't mount / read-only.
+UUID=$(blkid -s UUID -o value ${rootp})
+echo "UUID=$UUID /               ext3    errors=remount-ro 0       1" >> "${basedir}"/elementary-${architecture}/etc/fstab
+
+echo "Rsyncing rootfs into image file"
+rsync -HPavz -q "${basedir}"/elementary-${architecture}/ "${basedir}"/root/
+
+cp "${basedir}"/u-boot-"${ubootver}"/idbloader.img "${basedir}"/u-boot-"${ubootver}"/u-boot.itb "${basedir}"/root/boot/
+dd if="${basedir}"/u-boot-"${ubootver}"/idbloader.img of=${loopdevice} seek=64 conv=notrunc
+dd if="${basedir}"/u-boot-"${ubootver}"/u-boot.itb of=${loopdevice} seek=16384 conv=notrunc
+
+# Unmount partitions
+sync
+umount ${rootp}
+
+kpartx -dv ${loopdevice}
+losetup -d ${loopdevice}
+
+ls -lah "${basedir}"
 
