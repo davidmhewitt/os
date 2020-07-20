@@ -11,7 +11,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed
 
 tfaver=2.3
 ubootver=2020.07
