@@ -8,8 +8,10 @@ basedir=`pwd`/pinebook-pro
 mkdir -p ${basedir}
 cd ${basedir}
 
-apt update
-apt install -y python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler
+export DEBIAN_FRONTEND="noninteractive"
+
+apt-get update
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler
 
 tfaver=2.3
 ubootver=2020.07
