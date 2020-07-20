@@ -14,7 +14,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev
 
 tfaver=2.3
 ubootver=2020.07
@@ -54,6 +54,9 @@ export packages="elementary-minimal"
 export architecture="arm64"
 export codename="focal"
 export channel="daily"
+
+# Working directory
+work_dir="${basedir}/elementary-${architecture}"
 
 # Bootstrap an ubuntu minimal system
 debootstrap --foreign --arch $architecture $codename elementary-$architecture http://ports.ubuntu.com/ubuntu-ports
@@ -106,6 +109,48 @@ EOF
 chmod +x elementary-$architecture/third-stage
 LANG=C chroot elementary-$architecture /third-stage
 
+# Pull in the wifi and bluetooth firmware from manjaro's git repository.
+git clone https://gitlab.manjaro.org/manjaro-arm/packages/community/ap6256-firmware.git
+cd ap6256-firmware
+mkdir brcm
+cp BCM4345C5.hcd brcm/BCM.hcd
+cp BCM4345C5.hcd brcm/BCM4345C5.hcd
+cp nvram_ap6256.txt brcm/brcmfmac43456-sdio.pine64,pinebook-pro.txt
+cp fw_bcm43456c5_ag.bin brcm/brcmfmac43456-sdio.bin
+cp brcmfmac43456-sdio.clm_blob brcm/brcmfmac43456-sdio.clm_blob
+mkdir -p ${work_dir}/lib/firmware/brcm/
+cp -a brcm/* ${work_dir}/lib/firmware/brcm/
+
+# Time to build the kernel
+cd ${work_dir}/usr/src
+git clone https://gitlab.manjaro.org/tsys/linux-pinebook-pro.git --depth 1 linux
+cd linux
+touch .scmversion
+patch -p1 --no-backup-if-mismatch < ${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch
+patch -p1 --no-backup-if-mismatch < ${rootdir}/pinebookpro/patches/kernel/0008-board-rockpi4-dts-upper-port-host.patch
+patch -p1 --no-backup-if-mismatch < ${rootdir}/pinebookpro/patches/kernel/0008-rk-hwacc-drm.patch
+cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.7.config .config
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=${work_dir} modules_install
+cp arch/arm64/boot/Image ${work_dir}/boot
+cp arch/arm64/boot/dts/rockchip/rk3399-pinebook-pro.dtb ${work_dir}/boot
+# clean up because otherwise we leave stuff around that causes external modules
+# to fail to build.
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mrproper
+cp ${rootdir}/kernel-configs/pinebook-pro-5.7.config .config
+
+# Fix up the symlink for building external modules
+# kernver is used to we don't need to keep track of what the current compiled
+# version is
+kernver=$(ls ${work_dir}/lib/modules)
+cd ${work_dir}/lib/modules/${kernver}/
+rm build
+rm source
+ln -s /usr/src/linux build
+ln -s /usr/src/linux source
+cd ${basedir}
+
 # Create the disk and partition it
 echo "Creating image file"
 dd if=/dev/zero of=${basedir}/${imagename}.img bs=1M count=$size
@@ -129,6 +174,16 @@ mount ${rootp} "${basedir}"/root
 # Create an fstab so that we don't mount / read-only.
 UUID=$(blkid -s UUID -o value ${rootp})
 echo "UUID=$UUID /               ext3    errors=remount-ro 0       1" >> "${basedir}"/elementary-${architecture}/etc/fstab
+
+mkdir ${work_dir}/boot/extlinux/
+
+cat << '__EOF__' > ${work_dir}/boot/extlinux/
+LABEL elementary ARM
+KERNEL /Image
+FDT /dtbs/rockchip/rk3399-pinebook-pro.dtb
+APPEND initrd=/initramfs-linux.img console=tty1 console=ttyS2,1500000 root=UUID=${uuid} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
+__EOF__
+cd ${basedir}
 
 echo "Rsyncing rootfs into image file"
 rsync -HPavz -q "${basedir}"/elementary-${architecture}/ "${basedir}"/root/
