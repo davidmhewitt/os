@@ -138,7 +138,7 @@ cp arch/arm64/boot/dts/rockchip/rk3399-pinebook-pro.dtb ${work_dir}/boot
 # clean up because otherwise we leave stuff around that causes external modules
 # to fail to build.
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mrproper
-cp ${rootdir}/kernel-configs/pinebook-pro-5.7.config .config
+cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.7.config .config
 
 # Fix up the symlink for building external modules
 # kernver is used to we don't need to keep track of what the current compiled
@@ -150,6 +150,16 @@ rm source
 ln -s /usr/src/linux build
 ln -s /usr/src/linux source
 cd ${basedir}
+
+# Make a third stage that installs all of the metapackages
+cat << EOF > elementary-$architecture/build-initramfs
+#!/bin/bash
+update-initramfs -c -k ${kernver}
+rm -f /build-initramfs
+EOF
+
+chmod +x elementary-$architecture/build-initramfs
+LANG=C chroot elementary-$architecture /build-initramfs
 
 # Create the disk and partition it
 echo "Creating image file"
@@ -184,6 +194,10 @@ FDT /dtbs/rockchip/rk3399-pinebook-pro.dtb
 APPEND initrd=/initramfs-linux.img console=tty1 console=ttyS2,1500000 root=UUID=${uuid} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
 __EOF__
 cd ${basedir}
+
+umount elementary-$architecture/dev/pts
+umount elementary-$architecture/dev/
+umount elementary-$architecture/proc
 
 echo "Rsyncing rootfs into image file"
 rsync -HPavz -q "${basedir}"/elementary-${architecture}/ "${basedir}"/root/
