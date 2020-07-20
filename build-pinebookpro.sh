@@ -26,7 +26,7 @@ tar xf "trusted-firmware-a-${tfaver}.tar.gz"
 tar xf "u-boot-${ubootver}.tar.bz2"
 cd "trusted-firmware-a-${tfaver}"
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
-make PLAT=rk3399
+CROSS_COMPILE=aarch64-linux-gnu- make PLAT=rk3399
 cp build/rk3399/release/bl31/bl31.elf ../u-boot-${ubootver}/
 
 cd ../u-boot-${pkgver}
