@@ -14,4 +14,4 @@ jobs:
 
     - name: Build and upload image
       run: |
-        ./build-pinebookpro.sh "${{ secrets.key }}" "${{ secrets.secret }}" "${{ secrets.endpoint }}" "${{ secrets.bucket}}"
+        sudo ./build-pinebookpro.sh "${{ secrets.key }}" "${{ secrets.secret }}" "${{ secrets.endpoint }}" "${{ secrets.bucket}}"
