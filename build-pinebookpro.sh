@@ -11,7 +11,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates build-essential
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates
 
 tfaver=2.3
 ubootver=2020.07
@@ -29,6 +29,14 @@ unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
 CROSS_COMPILE=aarch64-linux-gnu- make PLAT=rk3399
 cp build/rk3399/release/bl31/bl31.elf ../u-boot-${ubootver}/
 
-cd ../u-boot-${pkgver}
-ls
+cd ../u-boot-${ubootver}
 
+patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0001-Add-regulator-needed-for-usage-of-USB.patch"
+patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0002-Correct-boot-order-to-be-USB-SD-eMMC.patch"
+patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0003-rk3399-light-pinebook-power-and-standby-leds-during-early-boot.patch"
+sed -i s/"CONFIG_BOOTDELAY=3"/"CONFIG_BOOTDELAY=0"/g configs/pinebook-pro-rk3399_defconfig
+
+unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
+CROSS_COMPILE=aarch64-linux-gnu- pinebook-pro-rk3399_defconfig
+echo 'CONFIG_IDENT_STRING=" elementary ARM"' >> .config
+CROSS_COMPILE=aarch64-linux-gnu- make
