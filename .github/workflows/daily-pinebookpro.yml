@@ -7,13 +7,6 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    container:
-      image: ubuntu:latest
-      volumes:
-        - /proc:/proc
-      options: --privileged
-
     steps:
     - name: Clone build scripts
       uses: actions/checkout@v1
