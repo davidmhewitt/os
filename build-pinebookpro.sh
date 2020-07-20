@@ -11,7 +11,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync
 
 tfaver=2.3
 ubootver=2020.07
@@ -40,3 +40,23 @@ unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
 CROSS_COMPILE=aarch64-linux-gnu- make pinebook-pro-rk3399_defconfig
 echo 'CONFIG_IDENT_STRING=" elementary ARM"' >> .config
 CROSS_COMPILE=aarch64-linux-gnu- make
+
+cd "${basedir}"
+
+# Make sure cross-running ARM ELF executables is enabled
+update-binfmts --enable
+
+export packages="elementary-minimal"
+export architecture="arm64"
+export codename="focal"
+export channel="daily"
+
+# Bootstrap an ubuntu minimal system
+debootstrap --foreign --arch $architecture $codename elementary-$architecture http://ports.ubuntu.com/ubuntu-ports
+
+# Add the QEMU emulator for running ARM executables
+cp /usr/bin/qemu-arm-static elementary-$architecture/usr/bin/
+
+# Run the second stage of the bootstrap in QEMU
+LANG=C chroot elementary-$architecture /debootstrap/debootstrap --second-stage
+
