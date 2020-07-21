@@ -2,8 +2,8 @@
 
 set -e
 
-# Size of .img file to build in MB. Approx 4GB required at this time, the rest is free space on /
-size=5000
+# Size of .img file to build in MB.
+size=7500
 
 rootdir=`pwd`
 basedir=`pwd`/pinebook-pro
