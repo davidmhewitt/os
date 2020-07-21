@@ -187,12 +187,12 @@ echo "UUID=$UUID /               ext3    errors=remount-ro 0       1" >> "${base
 
 mkdir ${work_dir}/boot/extlinux/
 
-cat << '__EOF__' > ${work_dir}/boot/extlinux/extlinux.conf
+cat << EOF > ${work_dir}/boot/extlinux/extlinux.conf
 LABEL elementary ARM
 KERNEL /Image
 FDT /dtbs/rockchip/rk3399-pinebook-pro.dtb
-APPEND initrd=/initramfs-linux.img console=tty1 console=ttyS2,1500000 root=UUID=${uuid} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
-__EOF__
+APPEND initrd=/initrd.img-${kernver} console=tty1 console=ttyS2,1500000 root=UUID=${uuid} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
+EOF
 cd ${basedir}
 
 umount elementary-$architecture/dev/pts
@@ -215,6 +215,8 @@ losetup -d ${loopdevice}
 
 echo "Compressing ${imagename}.img"
 xz -z "${basedir}"/${imagename}.img
+
+cd "${rootdir}"
 
 KEY="$1"
 SECRET="$2"
