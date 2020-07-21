@@ -50,7 +50,7 @@ cd "${basedir}"
 # Make sure cross-running ARM ELF executables is enabled
 update-binfmts --enable
 
-export packages="elementary-minimal initramfs-tools"
+export packages="elementary-minimal elementary-desktop elementary-standard initramfs-tools"
 export architecture="arm64"
 export codename="focal"
 export channel="daily"
@@ -134,7 +134,7 @@ make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc)
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=${work_dir} modules_install
 cp arch/arm64/boot/Image ${work_dir}/boot
-cp arch/arm64/boot/dts/rockchip/rk3399-pinebook-pro.dtb ${work_dir}/boot
+make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_DTBS_PATH="${work_dir}/boot/dtbs" dtbs_install
 # clean up because otherwise we leave stuff around that causes external modules
 # to fail to build.
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mrproper
@@ -151,7 +151,7 @@ ln -s /usr/src/linux build
 ln -s /usr/src/linux source
 cd ${basedir}
 
-# Make a third stage that installs all of the metapackages
+# Build the initramfs for our kernel
 cat << EOF > elementary-$architecture/build-initramfs
 #!/bin/bash
 update-initramfs -c -k ${kernver}
@@ -189,11 +189,36 @@ mkdir ${work_dir}/boot/extlinux/
 
 cat << EOF > ${work_dir}/boot/extlinux/extlinux.conf
 LABEL elementary ARM
-KERNEL /Image
-FDT /dtbs/rockchip/rk3399-pinebook-pro.dtb
-APPEND initrd=/initrd.img-${kernver} console=tty1 console=ttyS2,1500000 root=UUID=${uuid} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
+KERNEL /boot/Image
+FDT /boot/dtbs/rockchip/rk3399-pinebook-pro.dtb
+APPEND initrd=/boot/initrd.img-${kernver} console=tty1 console=ttyS2,1500000 root=UUID=${UUID} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60
 EOF
 cd ${basedir}
+
+cat << EOF > elementary-$architecture/cleanup
+#!/bin/bash
+
+apt-get install --no-install-recommends -f -q -y git
+git clone --depth 1 https://github.com/elementary/seeds.git --single-branch --branch $codename
+git clone --depth 1 https://github.com/elementary/platform.git --single-branch --branch $codename
+for package in \$(cat 'platform/blacklist' 'seeds/blacklist' | grep -v '#'); do
+    apt-get autoremove --purge -f -q -y "\$package"
+done
+apt-get autoremove --purge -f -q -y git
+rm -R ../seeds ../platform
+rm -rf /root/.bash_history
+apt-get clean
+rm -f /0
+rm -f /hs_err*
+rm -f /cleanup
+rm -f /usr/bin/qemu*
+rm -f /var/lib/apt/lists/*_Packages
+rm -f /var/lib/apt/lists/*_Sources
+rm -f /var/lib/apt/lists/*_Translation-*
+EOF
+
+chmod +x elementary-$architecture/cleanup
+LANG=C chroot elementary-$architecture /cleanup
 
 umount elementary-$architecture/dev/pts
 umount elementary-$architecture/dev/
