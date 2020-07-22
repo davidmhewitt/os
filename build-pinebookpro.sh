@@ -195,6 +195,14 @@ APPEND initrd=/boot/initrd.img-${kernver} console=tty1 console=ttyS2,1500000 roo
 EOF
 cd ${basedir}
 
+mkdir -p ${work_dir}/etc/udev/hwdb.d/
+cat << EOF > ${work_dir}/etc/udev/hwdb.d/10-usb-kbd.hwdb
+evdev:input:b0003v258Ap001E*
+  KEYBOARD_KEY_700a5=brightnessdown
+  KEYBOARD_KEY_700a6=brightnessup
+  KEYBOARD_KEY_70066=sleep
+EOF
+
 cat << EOF > elementary-$architecture/cleanup
 #!/bin/bash
 
