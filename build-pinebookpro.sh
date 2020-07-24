@@ -223,6 +223,9 @@ EOF
 
 sed -i s/"#SuspendState=mem standby freeze"/"SuspendState=freeze"/g ${work_dir}/etc/systemd/sleep.conf
 
+mkdir -p ${work_dir}/var/lib/alsa/
+cp ${rootdir}/pinebookpro/config/alsa/asound.state ${work_dir}/var/lib/alsa/
+
 cat << EOF > elementary-$architecture/cleanup
 #!/bin/bash
 
