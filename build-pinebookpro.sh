@@ -197,10 +197,28 @@ cd ${basedir}
 
 mkdir -p ${work_dir}/etc/udev/hwdb.d/
 cat << EOF > ${work_dir}/etc/udev/hwdb.d/10-usb-kbd.hwdb
+# Make the sleep and brightness Fn hotkeys work
 evdev:input:b0003v258Ap001E*
   KEYBOARD_KEY_700a5=brightnessdown
   KEYBOARD_KEY_700a6=brightnessup
   KEYBOARD_KEY_70066=sleep
+
+# Disable the "keyboard mouse" in libinput. This is reported by the keyboard firmware
+# and is probably a placeholder for a TrackPoint style mouse that doesn't exist
+evdev:input:b0003v258Ap001Ee0110-e0,1,2,4,k110,111,112,r0,1,am4,lsfw
+  ID_INPUT=0
+  ID_INPUT_MOUSE=0
+
+EOF
+
+mkdir -p ${work_dir}/etc/libinput/
+cat << EOF > ${work_dir}/etc/libinput/local-overrides.quirks
+[Pinebook Pro Keyboard]
+MatchUdevType=keyboard
+MatchBus=usb
+MatchVendor=0x258A
+MatchProduct=0x001E
+AttrKeyboardIntegration=internal
 EOF
 
 cat << EOF > elementary-$architecture/cleanup
