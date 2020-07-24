@@ -221,6 +221,8 @@ MatchProduct=0x001E
 AttrKeyboardIntegration=internal
 EOF
 
+sed -i s/"#SuspendState=mem standby freeze"/"SuspendState=freeze"/g ${work_dir}/etc/systemd/sleep.conf
+
 cat << EOF > elementary-$architecture/cleanup
 #!/bin/bash
 
