@@ -1,0 +1,27 @@
+From 3a82e75796a0161d0b7bf39697b1da284772f10f Mon Sep 17 00:00:00 2001
+From: David Hewitt <davidmhewitt@gmail.com>
+Date: Mon, 27 Jul 2020 16:09:57 +0000
+Subject: [PATCH] PSCI: Don't override pm_power_off
+
+---
+ drivers/firmware/psci/psci.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/firmware/psci/psci.c b/drivers/firmware/psci/psci.c
+index 92013ecc2..4d9c6e51f 100644
+--- a/drivers/firmware/psci/psci.c
++++ b/drivers/firmware/psci/psci.c
+@@ -439,7 +439,9 @@ static void __init psci_0_2_set_functions(void)
+ 
+ 	arm_pm_restart = psci_sys_reset;
+ 
+-	pm_power_off = psci_sys_poweroff;
++	if (pm_power_off == NULL) {
++		pm_power_off = psci_sys_poweroff;
++	}
+ }
+ 
+ /*
+-- 
+2.25.1
+

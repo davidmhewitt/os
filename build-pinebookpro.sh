@@ -136,6 +136,8 @@ mv "linux-${linuxver}" linux
 cd linux
 touch .scmversion
 
+patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-PSCI-Don-t-override-pm_power_off.patch"
+
 # ALARM patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch"     #All
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-arm64-dts-rockchip-add-usb3-controller-node-for-RK33.patch"     #RK3328
