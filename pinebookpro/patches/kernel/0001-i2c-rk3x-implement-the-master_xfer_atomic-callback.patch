@@ -1,14 +1,14 @@
-From bace595b8b2bcef1b2dd7839fbf52719bf7f3ee5 Mon Sep 17 00:00:00 2001
+From 769c2f132b45ee4ff446422a2a7e305281fe8ecc Mon Sep 17 00:00:00 2001
 From: David Hewitt <davidmhewitt@gmail.com>
-Date: Tue, 28 Jul 2020 01:22:45 +0100
+Date: Tue, 28 Jul 2020 09:27:23 +0100
 Subject: [PATCH] i2c: rk3x: implement the master_xfer_atomic callback
 
 ---
- drivers/i2c/busses/i2c-rk3x.c | 41 ++++++++++++++++++++++++++++++-----
- 1 file changed, 36 insertions(+), 5 deletions(-)
+ drivers/i2c/busses/i2c-rk3x.c | 54 +++++++++++++++++++++++++++++++----
+ 1 file changed, 49 insertions(+), 5 deletions(-)
 
 diff --git a/drivers/i2c/busses/i2c-rk3x.c b/drivers/i2c/busses/i2c-rk3x.c
-index bc698240c..6fdaf6ec4 100644
+index bc698240c..110327f10 100644
 --- a/drivers/i2c/busses/i2c-rk3x.c
 +++ b/drivers/i2c/busses/i2c-rk3x.c
 @@ -14,6 +14,7 @@
@@ -35,19 +35,34 @@ index bc698240c..6fdaf6ec4 100644
  	int ret = 0;
  	int i;
  
-@@ -1075,12 +1077,28 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+@@ -1075,12 +1077,40 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
  
  		rk3x_i2c_start(i2c);
  
 -		timeout = wait_event_timeout(i2c->wait, !i2c->busy,
 -					     msecs_to_jiffies(WAIT_TIMEOUT));
 +		if (atomic) {
-+			ret = readl_poll_timeout_atomic(i2c->regs + REG_IPD,
-+							ipd,
-+							(ipd & REG_INT_MBTF) ||
-+							(ipd & REG_INT_MBRF),
-+							10,
-+							WAIT_TIMEOUT * 1000);
++			while (1) {
++				ret = readl_poll_timeout_atomic(i2c->regs + REG_IPD,
++								ipd,
++								(ipd & REG_INT_MBTF) ||
++								(ipd & REG_INT_MBRF) ||
++								(ipd & REG_INT_START) ||
++								(ipd & REG_INT_STOP),
++								10,
++								WAIT_TIMEOUT * 1000);
++
++				if (ret) {
++					dev_dbg(i2c->dev, "Atomic poll timeout");
++					ret = -ETIMEDOUT;
++					break;
++				}
++
++				rk3x_i2c_irq (-1, i2c);
++
++				if (!i2c->busy)
++					break;
++			}
 +		} else {
 +			timeout = msecs_to_jiffies(WAIT_TIMEOUT);
 +			timeout = wait_event_timeout(i2c->wait, !i2c->busy,
@@ -56,9 +71,6 @@ index bc698240c..6fdaf6ec4 100644
 +			if (!timeout)
 +				ret = -ETIMEDOUT;
 +		}
-+
-+		if (atomic && !ret)
-+			rk3x_i2c_irq (-1, i2c);
  
  		spin_lock_irqsave(&i2c->lock, flags);
  
@@ -67,7 +79,7 @@ index bc698240c..6fdaf6ec4 100644
  			dev_err(i2c->dev, "timeout, ipd: 0x%02x, state: %d\n",
  				i2c_readl(i2c, REG_IPD), i2c->state);
  
-@@ -1119,6 +1137,18 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
+@@ -1119,6 +1149,19 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
  	return 0;
  }
  
@@ -80,13 +92,14 @@ index bc698240c..6fdaf6ec4 100644
 +static int rk3x_i2c_xfer_atomic(struct i2c_adapter *adap, struct i2c_msg *msgs,
 +				int num)
 +{
++	dev_dbg(&adap->dev, "rk3x_i2c_xfer_atomic()");
 +	return rk3x_i2c_xfer_messages(adap, msgs, num, true);
 +}
 +
  static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  {
  	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL | I2C_FUNC_PROTOCOL_MANGLING;
-@@ -1126,6 +1156,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
+@@ -1126,6 +1169,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  
  static const struct i2c_algorithm rk3x_i2c_algorithm = {
  	.master_xfer		= rk3x_i2c_xfer,
