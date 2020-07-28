@@ -1,14 +1,14 @@
-From 769c2f132b45ee4ff446422a2a7e305281fe8ecc Mon Sep 17 00:00:00 2001
+From 06be2b56b01279b658e870cc3ec3d138d7a9d301 Mon Sep 17 00:00:00 2001
 From: David Hewitt <davidmhewitt@gmail.com>
-Date: Tue, 28 Jul 2020 09:27:23 +0100
+Date: Tue, 28 Jul 2020 13:57:54 +0100
 Subject: [PATCH] i2c: rk3x: implement the master_xfer_atomic callback
 
 ---
- drivers/i2c/busses/i2c-rk3x.c | 54 +++++++++++++++++++++++++++++++----
- 1 file changed, 49 insertions(+), 5 deletions(-)
+ drivers/i2c/busses/i2c-rk3x.c | 140 ++++++++++++++++++++++++----------
+ 1 file changed, 100 insertions(+), 40 deletions(-)
 
 diff --git a/drivers/i2c/busses/i2c-rk3x.c b/drivers/i2c/busses/i2c-rk3x.c
-index bc698240c..110327f10 100644
+index bc698240c..44edcd97a 100644
 --- a/drivers/i2c/busses/i2c-rk3x.c
 +++ b/drivers/i2c/busses/i2c-rk3x.c
 @@ -14,6 +14,7 @@
@@ -19,67 +19,189 @@ index bc698240c..110327f10 100644
  #include <linux/of_address.h>
  #include <linux/of_irq.h>
  #include <linux/spinlock.h>
-@@ -1040,12 +1041,13 @@ static int rk3x_i2c_setup(struct rk3x_i2c *i2c, struct i2c_msg *msgs, int num)
+@@ -471,18 +472,16 @@ static void rk3x_i2c_handle_stop(struct rk3x_i2c *i2c, unsigned int ipd)
+ 	wake_up(&i2c->wait);
+ }
+ 
+-static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
++static void rk3x_i2c_transfer_complete(struct rk3x_i2c *i2c)
+ {
+-	struct rk3x_i2c *i2c = dev_id;
+ 	unsigned int ipd;
+ 
+-	spin_lock(&i2c->lock);
+-
+ 	ipd = i2c_readl(i2c, REG_IPD);
++
+ 	if (i2c->state == STATE_IDLE) {
+ 		dev_warn(i2c->dev, "irq in STATE_IDLE, ipd = 0x%x\n", ipd);
+ 		rk3x_i2c_clean_ipd(i2c);
+-		goto out;
++		return;
+ 	}
+ 
+ 	dev_dbg(i2c->dev, "IRQ: state %d, ipd: %x\n", i2c->state, ipd);
+@@ -506,7 +505,7 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
+ 
+ 	/* is there anything left to handle? */
+ 	if ((ipd & REG_INT_ALL) == 0)
+-		goto out;
++		return;
+ 
+ 	switch (i2c->state) {
+ 	case STATE_START:
+@@ -524,8 +523,17 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
+ 	case STATE_IDLE:
+ 		break;
+ 	}
++}
++
++
++static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
++{
++	struct rk3x_i2c *i2c = dev_id;
++
++	spin_lock(&i2c->lock);
++
++	rk3x_i2c_transfer_complete(i2c);
+ 
+-out:
+ 	spin_unlock(&i2c->lock);
+ 	return IRQ_HANDLED;
+ }
+@@ -1040,17 +1048,81 @@ static int rk3x_i2c_setup(struct rk3x_i2c *i2c, struct i2c_msg *msgs, int num)
  	return ret;
  }
  
 -static int rk3x_i2c_xfer(struct i2c_adapter *adap,
 -			 struct i2c_msg *msgs, int num)
-+static int rk3x_i2c_xfer_messages(struct i2c_adapter *adap,
-+				  struct i2c_msg *msgs, int num, bool atomic)
++static int rk3x_i2c_xfer_msg(struct rk3x_i2c *i2c, struct i2c_msg *msg,
++			     bool atomic)
  {
- 	struct rk3x_i2c *i2c = (struct rk3x_i2c *)adap->algo_data;
+-	struct rk3x_i2c *i2c = (struct rk3x_i2c *)adap->algo_data;
  	unsigned long timeout, flags;
  	u32 val;
 +	u32 ipd;
  	int ret = 0;
- 	int i;
+-	int i;
++
++	rk3x_i2c_start(i2c);
++
++	if (atomic) {
++		while (1) {
++			ret = readl_poll_timeout_atomic(i2c->regs + REG_IPD,
++							ipd,
++							(ipd & REG_INT_MBTF) ||
++							(ipd & REG_INT_MBRF) ||
++							(ipd & REG_INT_START) ||
++							(ipd & REG_INT_STOP),
++							10,
++							WAIT_TIMEOUT * 1000);
++
++			if (ret) {
++				dev_dbg(i2c->dev, "Atomic poll timeout\n");
++				ret = -ETIMEDOUT;
++				break;
++			}
++
++			spin_lock_irqsave(&i2c->lock, flags);
++
++			rk3x_i2c_transfer_complete (i2c);
++
++			spin_unlock_irqrestore(&i2c->lock, flags);
++
++			if (!i2c->busy)
++				break;
++		}
++	} else {
++		timeout = msecs_to_jiffies(WAIT_TIMEOUT);
++		timeout = wait_event_timeout(i2c->wait, !i2c->busy,
++					     timeout);
++
++		if (!timeout)
++			ret = -ETIMEDOUT;
++	}
  
-@@ -1075,12 +1077,40 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+ 	spin_lock_irqsave(&i2c->lock, flags);
  
- 		rk3x_i2c_start(i2c);
++	if (ret) {
++		dev_err(i2c->dev, "timeout, ipd: 0x%02x, state: %d\n",
++			i2c_readl(i2c, REG_IPD), i2c->state);
++
++		/* Force a STOP condition without interrupt */
++		i2c_writel(i2c, 0, REG_IEN);
++		val = i2c_readl(i2c, REG_CON) & REG_CON_TUNING_MASK;
++		val |= REG_CON_EN | REG_CON_STOP;
++		i2c_writel(i2c, val, REG_CON);
++
++		i2c->state = STATE_IDLE;
++
++		ret = -ETIMEDOUT;
++	} else if (i2c->error) {
++		ret = i2c->error;
++	}
++
++	spin_unlock_irqrestore(&i2c->lock, flags);
++
++	return ret;
++}
++
++static int rk3x_i2c_xfer_messages(struct i2c_adapter *adap,
++				  struct i2c_msg *msgs, int num, bool atomic)
++{
++	struct rk3x_i2c *i2c = (struct rk3x_i2c *)adap->algo_data;
++	int i, ret = 0, xfer_ret = 0;
++
+ 	clk_enable(i2c->clk);
+ 	clk_enable(i2c->pclk);
  
+@@ -1071,33 +1143,9 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+ 		if (i + ret >= num)
+ 			i2c->is_last_msg = true;
+ 
+-		spin_unlock_irqrestore(&i2c->lock, flags);
+-
+-		rk3x_i2c_start(i2c);
+-
 -		timeout = wait_event_timeout(i2c->wait, !i2c->busy,
 -					     msecs_to_jiffies(WAIT_TIMEOUT));
-+		if (atomic) {
-+			while (1) {
-+				ret = readl_poll_timeout_atomic(i2c->regs + REG_IPD,
-+								ipd,
-+								(ipd & REG_INT_MBTF) ||
-+								(ipd & REG_INT_MBRF) ||
-+								(ipd & REG_INT_START) ||
-+								(ipd & REG_INT_STOP),
-+								10,
-+								WAIT_TIMEOUT * 1000);
-+
-+				if (ret) {
-+					dev_dbg(i2c->dev, "Atomic poll timeout");
-+					ret = -ETIMEDOUT;
-+					break;
-+				}
-+
-+				rk3x_i2c_irq (-1, i2c);
-+
-+				if (!i2c->busy)
-+					break;
-+			}
-+		} else {
-+			timeout = msecs_to_jiffies(WAIT_TIMEOUT);
-+			timeout = wait_event_timeout(i2c->wait, !i2c->busy,
-+						     timeout);
-+
-+			if (!timeout)
-+				ret = -ETIMEDOUT;
-+		}
- 
- 		spin_lock_irqsave(&i2c->lock, flags);
- 
+-
+-		spin_lock_irqsave(&i2c->lock, flags);
+-
 -		if (timeout == 0) {
-+		if (ret == -ETIMEDOUT) {
- 			dev_err(i2c->dev, "timeout, ipd: 0x%02x, state: %d\n",
- 				i2c_readl(i2c, REG_IPD), i2c->state);
+-			dev_err(i2c->dev, "timeout, ipd: 0x%02x, state: %d\n",
+-				i2c_readl(i2c, REG_IPD), i2c->state);
+-
+-			/* Force a STOP condition without interrupt */
+-			i2c_writel(i2c, 0, REG_IEN);
+-			val = i2c_readl(i2c, REG_CON) & REG_CON_TUNING_MASK;
+-			val |= REG_CON_EN | REG_CON_STOP;
+-			i2c_writel(i2c, val, REG_CON);
+-
+-			i2c->state = STATE_IDLE;
+-
+-			ret = -ETIMEDOUT;
+-			break;
+-		}
+-
+-		if (i2c->error) {
+-			ret = i2c->error;
++		xfer_ret = rk3x_i2c_xfer_msg(i2c, msgs + i, atomic);
++		if (xfer_ret) {
++			ret = xfer_ret;
+ 			break;
+ 		}
+ 	}
+@@ -1105,8 +1153,6 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+ 	clk_disable(i2c->pclk);
+ 	clk_disable(i2c->clk);
  
-@@ -1119,6 +1149,19 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
+-	spin_unlock_irqrestore(&i2c->lock, flags);
+-
+ 	return ret < 0 ? ret : num;
+ }
+ 
+@@ -1119,6 +1165,19 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
  	return 0;
  }
  
@@ -92,14 +214,14 @@ index bc698240c..110327f10 100644
 +static int rk3x_i2c_xfer_atomic(struct i2c_adapter *adap, struct i2c_msg *msgs,
 +				int num)
 +{
-+	dev_dbg(&adap->dev, "rk3x_i2c_xfer_atomic()");
++	dev_dbg(&adap->dev, "rk3x_i2c_xfer_atomic()\n");
 +	return rk3x_i2c_xfer_messages(adap, msgs, num, true);
 +}
 +
  static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  {
  	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL | I2C_FUNC_PROTOCOL_MANGLING;
-@@ -1126,6 +1169,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
+@@ -1126,6 +1185,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  
  static const struct i2c_algorithm rk3x_i2c_algorithm = {
  	.master_xfer		= rk3x_i2c_xfer,
