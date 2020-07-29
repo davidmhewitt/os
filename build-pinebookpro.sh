@@ -136,8 +136,8 @@ mv "linux-${linuxver}" linux
 cd linux
 touch .scmversion
 
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-PSCI-Don-t-override-pm_power_off.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-i2c-rk3x-implement-the-master_xfer_atomic-callback.patch"
+#patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-PSCI-Don-t-override-pm_power_off.patch"
+#patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-i2c-rk3x-implement-the-master_xfer_atomic-callback.patch"
 
 # ALARM patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch"     #All
@@ -273,6 +273,9 @@ AttrKeyboardIntegration=internal
 EOF
 
 sed -i s/"#SuspendState=mem standby freeze"/"SuspendState=freeze"/g ${work_dir}/etc/systemd/sleep.conf
+
+# Disable ondemand scheduler so we can default to schedutil
+rm ${work_dir}/etc/systemd/system/multi-user.target.wants/ondemand.service
 
 mkdir -p ${work_dir}/var/lib/alsa/
 cp ${rootdir}/pinebookpro/config/alsa/asound.state ${work_dir}/var/lib/alsa/
