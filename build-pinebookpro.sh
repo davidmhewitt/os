@@ -137,7 +137,7 @@ cd linux
 touch .scmversion
 
 #patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-PSCI-Don-t-override-pm_power_off.patch"
-#patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-i2c-rk3x-implement-the-master_xfer_atomic-callback.patch"
+patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-i2c-rk3x-implement-the-master_xfer_atomic-callback.patch"
 
 # ALARM patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch"     #All

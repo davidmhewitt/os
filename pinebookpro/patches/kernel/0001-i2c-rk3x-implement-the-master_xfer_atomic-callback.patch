@@ -1,14 +1,14 @@
-From 06be2b56b01279b658e870cc3ec3d138d7a9d301 Mon Sep 17 00:00:00 2001
+From 44f14dced1f75a43371d75087d653f25050bc70d Mon Sep 17 00:00:00 2001
 From: David Hewitt <davidmhewitt@gmail.com>
-Date: Tue, 28 Jul 2020 13:57:54 +0100
+Date: Thu, 30 Jul 2020 09:24:57 +0100
 Subject: [PATCH] i2c: rk3x: implement the master_xfer_atomic callback
 
 ---
- drivers/i2c/busses/i2c-rk3x.c | 140 ++++++++++++++++++++++++----------
- 1 file changed, 100 insertions(+), 40 deletions(-)
+ drivers/i2c/busses/i2c-rk3x.c | 173 ++++++++++++++++++++++++++--------
+ 1 file changed, 133 insertions(+), 40 deletions(-)
 
 diff --git a/drivers/i2c/busses/i2c-rk3x.c b/drivers/i2c/busses/i2c-rk3x.c
-index bc698240c..44edcd97a 100644
+index bc698240c..cdc4c0c80 100644
 --- a/drivers/i2c/busses/i2c-rk3x.c
 +++ b/drivers/i2c/busses/i2c-rk3x.c
 @@ -14,6 +14,7 @@
@@ -19,7 +19,87 @@ index bc698240c..44edcd97a 100644
  #include <linux/of_address.h>
  #include <linux/of_irq.h>
  #include <linux/spinlock.h>
-@@ -471,18 +472,16 @@ static void rk3x_i2c_handle_stop(struct rk3x_i2c *i2c, unsigned int ipd)
+@@ -244,6 +245,8 @@ static void rk3x_i2c_start(struct rk3x_i2c *i2c)
+ {
+ 	u32 val = i2c_readl(i2c, REG_CON) & REG_CON_TUNING_MASK;
+ 
++	dev_dbg(i2c->dev, "START\n");
++
+ 	i2c_writel(i2c, REG_INT_START, REG_IEN);
+ 
+ 	/* enable adapter with correct mode, send START condition */
+@@ -270,6 +273,7 @@ static void rk3x_i2c_stop(struct rk3x_i2c *i2c, int error)
+ 	i2c->error = error;
+ 
+ 	if (i2c->is_last_msg) {
++		dev_dbg (i2c->dev, "STOP\n");
+ 		/* Enable stop interrupt */
+ 		i2c_writel(i2c, REG_INT_STOP, REG_IEN);
+ 
+@@ -279,6 +283,8 @@ static void rk3x_i2c_stop(struct rk3x_i2c *i2c, int error)
+ 		ctrl |= REG_CON_STOP;
+ 		i2c_writel(i2c, ctrl, REG_CON);
+ 	} else {
++		dev_dbg (i2c->dev, "next message\n");
++
+ 		/* Signal rk3x_i2c_xfer to start the next message. */
+ 		i2c->busy = false;
+ 		i2c->state = STATE_IDLE;
+@@ -304,6 +310,8 @@ static void rk3x_i2c_prepare_read(struct rk3x_i2c *i2c)
+ 	unsigned int len = i2c->msg->len - i2c->processed;
+ 	u32 con;
+ 
++	dev_dbg (i2c->dev, "prepare read\n");
++
+ 	con = i2c_readl(i2c, REG_CON);
+ 
+ 	/*
+@@ -337,6 +345,8 @@ static void rk3x_i2c_fill_transmit_buf(struct rk3x_i2c *i2c)
+ 	u32 val;
+ 	u8 byte;
+ 
++	dev_dbg (i2c->dev, "fill transmit buf\n");
++
+ 	for (i = 0; i < 8; ++i) {
+ 		val = 0;
+ 		for (j = 0; j < 4; ++j) {
+@@ -366,6 +376,8 @@ static void rk3x_i2c_fill_transmit_buf(struct rk3x_i2c *i2c)
+ 
+ static void rk3x_i2c_handle_start(struct rk3x_i2c *i2c, unsigned int ipd)
+ {
++	dev_dbg (i2c->dev, "handle_start\n");
++
+ 	if (!(ipd & REG_INT_START)) {
+ 		rk3x_i2c_stop(i2c, -EIO);
+ 		dev_warn(i2c->dev, "unexpected irq in START: 0x%x\n", ipd);
+@@ -394,6 +406,8 @@ static void rk3x_i2c_handle_start(struct rk3x_i2c *i2c, unsigned int ipd)
+ 
+ static void rk3x_i2c_handle_write(struct rk3x_i2c *i2c, unsigned int ipd)
+ {
++	dev_dbg (i2c->dev, "handle_write\n");
++
+ 	if (!(ipd & REG_INT_MBTF)) {
+ 		rk3x_i2c_stop(i2c, -EIO);
+ 		dev_err(i2c->dev, "unexpected irq in WRITE: 0x%x\n", ipd);
+@@ -418,6 +432,8 @@ static void rk3x_i2c_handle_read(struct rk3x_i2c *i2c, unsigned int ipd)
+ 	u32 uninitialized_var(val);
+ 	u8 byte;
+ 
++	dev_dbg (i2c->dev, "handle_read\n");
++
+ 	/* we only care for MBRF here. */
+ 	if (!(ipd & REG_INT_MBRF))
+ 		return;
+@@ -449,6 +465,8 @@ static void rk3x_i2c_handle_stop(struct rk3x_i2c *i2c, unsigned int ipd)
+ {
+ 	unsigned int con;
+ 
++	dev_dbg (i2c->dev, "handle_stop\n");
++
+ 	if (!(ipd & REG_INT_STOP)) {
+ 		rk3x_i2c_stop(i2c, -EIO);
+ 		dev_err(i2c->dev, "unexpected irq in STOP: 0x%x\n", ipd);
+@@ -471,18 +489,16 @@ static void rk3x_i2c_handle_stop(struct rk3x_i2c *i2c, unsigned int ipd)
  	wake_up(&i2c->wait);
  }
  
@@ -41,7 +121,7 @@ index bc698240c..44edcd97a 100644
  	}
  
  	dev_dbg(i2c->dev, "IRQ: state %d, ipd: %x\n", i2c->state, ipd);
-@@ -506,7 +505,7 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
+@@ -506,7 +522,7 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
  
  	/* is there anything left to handle? */
  	if ((ipd & REG_INT_ALL) == 0)
@@ -50,7 +130,7 @@ index bc698240c..44edcd97a 100644
  
  	switch (i2c->state) {
  	case STATE_START:
-@@ -524,8 +523,17 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
+@@ -524,9 +540,22 @@ static irqreturn_t rk3x_i2c_irq(int irqno, void *dev_id)
  	case STATE_IDLE:
  		break;
  	}
@@ -61,15 +141,39 @@ index bc698240c..44edcd97a 100644
 +{
 +	struct rk3x_i2c *i2c = dev_id;
 +
++	dev_dbg (i2c->dev, "acquiring spin lock\n");
 +	spin_lock(&i2c->lock);
++	dev_dbg (i2c->dev, "spin lock acquired\n");
 +
 +	rk3x_i2c_transfer_complete(i2c);
  
 -out:
  	spin_unlock(&i2c->lock);
++	dev_dbg (i2c->dev, "spin lock released\n");
++
  	return IRQ_HANDLED;
  }
-@@ -1040,17 +1048,81 @@ static int rk3x_i2c_setup(struct rk3x_i2c *i2c, struct i2c_msg *msgs, int num)
+ 
+@@ -882,7 +911,9 @@ static void rk3x_i2c_adapt_div(struct rk3x_i2c *i2c, unsigned long clk_rate)
+ 
+ 	clk_enable(i2c->pclk);
+ 
++	dev_dbg (i2c->dev, "div acquiring spin lock\n");
+ 	spin_lock_irqsave(&i2c->lock, flags);
++	dev_dbg (i2c->dev, "div acquired spin lock\n");
+ 	val = i2c_readl(i2c, REG_CON);
+ 	val &= ~REG_CON_TUNING_MASK;
+ 	val |= calc.tuning;
+@@ -890,6 +921,8 @@ static void rk3x_i2c_adapt_div(struct rk3x_i2c *i2c, unsigned long clk_rate)
+ 	i2c_writel(i2c, (calc.div_high << 16) | (calc.div_low & 0xffff),
+ 		   REG_CLKDIV);
+ 	spin_unlock_irqrestore(&i2c->lock, flags);
++	dev_dbg (i2c->dev, "div spin lock released\n");
++
+ 
+ 	clk_disable(i2c->pclk);
+ 
+@@ -1040,16 +1073,88 @@ static int rk3x_i2c_setup(struct rk3x_i2c *i2c, struct i2c_msg *msgs, int num)
  	return ret;
  }
  
@@ -84,10 +188,13 @@ index bc698240c..44edcd97a 100644
 +	u32 ipd;
  	int ret = 0;
 -	int i;
+ 
++	dev_dbg (i2c->dev, "xfer_msg, irqs_disabled: %d\n", irqs_disabled());
 +
 +	rk3x_i2c_start(i2c);
 +
 +	if (atomic) {
++		dev_dbg (i2c->dev, "xfer msg atomic\n");
 +		while (1) {
 +			ret = readl_poll_timeout_atomic(i2c->regs + REG_IPD,
 +							ipd,
@@ -114,6 +221,8 @@ index bc698240c..44edcd97a 100644
 +				break;
 +		}
 +	} else {
++		dev_dbg (i2c->dev, "xfer msg irq mode\n");
++
 +		timeout = msecs_to_jiffies(WAIT_TIMEOUT);
 +		timeout = wait_event_timeout(i2c->wait, !i2c->busy,
 +					     timeout);
@@ -121,9 +230,11 @@ index bc698240c..44edcd97a 100644
 +		if (!timeout)
 +			ret = -ETIMEDOUT;
 +	}
- 
++
++	dev_dbg (i2c->dev, "xfer acquiring spin lock\n");
  	spin_lock_irqsave(&i2c->lock, flags);
- 
++	dev_dbg (i2c->dev, "xfer spin lock acquired\n");
++
 +	if (ret) {
 +		dev_err(i2c->dev, "timeout, ipd: 0x%02x, state: %d\n",
 +			i2c_readl(i2c, REG_IPD), i2c->state);
@@ -142,6 +253,7 @@ index bc698240c..44edcd97a 100644
 +	}
 +
 +	spin_unlock_irqrestore(&i2c->lock, flags);
++	dev_dbg (i2c->dev, "xfer spin lock released\n");
 +
 +	return ret;
 +}
@@ -151,11 +263,10 @@ index bc698240c..44edcd97a 100644
 +{
 +	struct rk3x_i2c *i2c = (struct rk3x_i2c *)adap->algo_data;
 +	int i, ret = 0, xfer_ret = 0;
-+
+ 
  	clk_enable(i2c->clk);
  	clk_enable(i2c->pclk);
- 
-@@ -1071,33 +1143,9 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+@@ -1071,33 +1176,9 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
  		if (i + ret >= num)
  			i2c->is_last_msg = true;
  
@@ -192,7 +303,7 @@ index bc698240c..44edcd97a 100644
  			break;
  		}
  	}
-@@ -1105,8 +1153,6 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
+@@ -1105,8 +1186,6 @@ static int rk3x_i2c_xfer(struct i2c_adapter *adap,
  	clk_disable(i2c->pclk);
  	clk_disable(i2c->clk);
  
@@ -201,7 +312,7 @@ index bc698240c..44edcd97a 100644
  	return ret < 0 ? ret : num;
  }
  
-@@ -1119,6 +1165,19 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
+@@ -1119,6 +1198,19 @@ static __maybe_unused int rk3x_i2c_resume(struct device *dev)
  	return 0;
  }
  
@@ -221,7 +332,7 @@ index bc698240c..44edcd97a 100644
  static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  {
  	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL | I2C_FUNC_PROTOCOL_MANGLING;
-@@ -1126,6 +1185,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
+@@ -1126,6 +1218,7 @@ static u32 rk3x_i2c_func(struct i2c_adapter *adap)
  
  static const struct i2c_algorithm rk3x_i2c_algorithm = {
  	.master_xfer		= rk3x_i2c_xfer,
