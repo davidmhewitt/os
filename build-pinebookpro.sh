@@ -146,7 +146,6 @@ patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0010-arm64-dts-rockchip-add
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0011-fix-wonky-wifi-bt-on-PBP.patch"                                 #Pinebook Pro
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0012-add-suspend-to-rk3399-PBP.patch"                                #Pinebook Pro
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0013-arm64-dts-rockchip-setup-USB-type-c-port-as-dual-dat.patch"     #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0014-arm64-dts-rockchip-fix-roc-cc-dts.patch"                        #Roc-CC
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0015-add-dp-alt-mode-to-PBP.patch"                                   #Pinebook Pro
 
 # Pinebook patches
