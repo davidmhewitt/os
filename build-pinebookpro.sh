@@ -3,15 +3,15 @@
 set -e
 
 # Size of .img file to build in MB.
-size=7500
+size=7000
 
 rootdir=`pwd`
 basedir=`pwd`/pinebook-pro
 
 tfaver=2.3
 ubootver=2020.07
-linuxver=5.7.9
-kernsha256="a87d3066a7849cd6ba9a004311a9ee0402d29d17f12f64ad7d942447070b43f8  linux-${linuxver}.tar.xz"
+linuxver=5.7.11
+kernsha256="93293032aa13c3998eeb2afd910f11c0f2e8a76ffec46f74ce3fcfac53ed60f1  linux-${linuxver}.tar.xz"
 imagename=elementary-pbp
 
 mkdir -p ${basedir}
@@ -130,29 +130,17 @@ wget "http://www.kernel.org/pub/linux/kernel/v5.x/linux-${linuxver}.tar.xz"
 echo $kernsha256 | sha256sum --check
 
 tar xf "linux-${linuxver}.tar.xz"
+rm "linux-${linuxver}.tar.xz"
 mv "linux-${linuxver}" linux
 
 #git clone https://gitlab.manjaro.org/tsys/linux-pinebook-pro.git --depth 1 linux
 cd linux
 touch .scmversion
 
-#patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-PSCI-Don-t-override-pm_power_off.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-i2c-rk3x-implement-the-master_xfer_atomic-callback.patch"
-
 # ALARM patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch"     #All
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-arm64-dts-rockchip-add-usb3-controller-node-for-RK33.patch"     #RK3328
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0004-arm64-dts-rockchip-enable-usb3-nodes-on-rk3328-rock6.patch"     #RK3328
 
 # Manjaro ARM Patches
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-arm64-dts-rockchip-add-pcie-node-rockpi4.patch"                 #Rock Pi 4
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0002-arm64-dts-rockchip-modify-pcie-node-rockpro64.patch"            #RockPro64
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-text_offset.patch"                                              #Amlogic
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0004-board-rockpi4-dts-upper-port-host.patch"                        #Rock Pi 4
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0005-dt-bindings-arm-amlogic-add-odroid-c4-bindings.patch"           #Odroid C4 (added in 5.8)
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0006-arm64-dts-meson-sm1-add-support-for-Hardkernel-ODROID-C4.patch" #Odroid C4 (added in 5.8)
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0007-arm64-dts-rockchip-add-HDMI-sound-node-for-rk3328-ro.patch"     #Rock64
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0008-arm64-dts-allwinner-add-hdmi-sound-to-pine-devices.patch"       #Pine64
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0009-drivers-power-supply-Add-support-for-cw2015.patch"              #Pinebook Pro (added in 5.8)
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0010-arm64-dts-rockchip-add-cw2015-node-to-PBP.patch"                #Pinebook Pro
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0011-fix-wonky-wifi-bt-on-PBP.patch"                                 #Pinebook Pro
@@ -160,8 +148,6 @@ patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0012-add-suspend-to-rk3399-
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0013-arm64-dts-rockchip-setup-USB-type-c-port-as-dual-dat.patch"     #Pinebook Pro
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0014-arm64-dts-rockchip-fix-roc-cc-dts.patch"                        #Roc-CC
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0015-add-dp-alt-mode-to-PBP.patch"                                   #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0016-arm64-dts-allwinner-add-ohci-ehci-to-h5-nanopi.patch"           #Nanopi Neo Plus 2
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0017-drm-bridge-analogix_dp-Add-enable_psr-param.patch"              #Pinebook Pro
 
 # Pinebook patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-Bluetooth-Add-new-quirk-for-broken-local-ext-features-max_page.patch"
@@ -170,11 +156,6 @@ patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-dt-bindings-net-blueto
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0004-Bluetooth-hci_h5-Add-support-for-binding-RTL8723BS-with-device-tree.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0005-Bluetooth-btrtl-add-support-for-the-RTL8723CS.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0006-bluetooth-btrtl-Make-more-space-for-config-firmware-file-name.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0007-arm64-dts-allwinner-add-bluetooth-to-pinebook.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0008-drm-sun8i-ui-vi-Fix-layer-zpos-change-atomic-modesetting.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0009-drm-sun4i-Mark-one-of-the-UI-planes-as-a-cursor-one.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0010-drm-sun4i-drm-Recover-from-occasional-HW-failures.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0011-arm64-dts-allwinner-enable-bluetooth-pinetab-pinepho.patch"
 
 cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.7.config .config
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
@@ -216,7 +197,7 @@ LANG=C chroot elementary-$architecture /build-initramfs
 echo "Creating image file"
 dd if=/dev/zero of=${basedir}/${imagename}.img bs=1M count=$size
 parted ${imagename}.img --script -- mklabel msdos
-parted ${imagename}.img --script -- mkpart primary ext3 32M 100%
+parted ${imagename}.img --script -- mkpart primary ext4 32M 100%
 
 # Set the partition variables
 loopdevice=`losetup -f --show "${basedir}"/${imagename}.img`
@@ -226,7 +207,7 @@ device="/dev/mapper/${device}"
 rootp=${device}p1
 
 # Create file systems
-mkfs.ext3 ${rootp}
+mkfs.ext4 ${rootp}
 
 # Create the dirs for the partitions and mount them
 mkdir -p "${basedir}"/root
