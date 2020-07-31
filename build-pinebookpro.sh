@@ -52,7 +52,7 @@ cd "${basedir}"
 # Make sure cross-running ARM ELF executables is enabled
 update-binfmts --enable
 
-export packages="elementary-minimal initramfs-tools"
+export packages="elementary-minimal elementary-standard elementary-desktop initramfs-tools linux-firmware"
 export architecture="arm64"
 export codename="focal"
 export channel="daily"
@@ -106,10 +106,8 @@ apt-get update
 apt-get --yes upgrade
 apt-get --yes install $packages
 
-groupadd -g 1000 elementary
-
-useradd -m -u 1000 -g 1000 -G sudo,elementary -s /bin/bash elementary
-echo "elementary:elementary" | chpasswd
+# Prevents shutdown from working properly
+apt-get --yes remove irqbalance
 
 rm -f /third-stage
 EOF
@@ -270,6 +268,17 @@ rm ${work_dir}/etc/systemd/system/multi-user.target.wants/ondemand.service
 
 mkdir -p ${work_dir}/var/lib/alsa/
 cp ${rootdir}/pinebookpro/config/alsa/asound.state ${work_dir}/var/lib/alsa/
+
+install -m 755 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs "${work_dir}/usr/sbin/resizerootfs"
+install -m 644 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs.service "${work_dir}/etc/systemd/system"
+mkdir -p "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/"
+ln -s /etc/systemd/system/resizerootfs.service "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/rpi-resizerootfs.service"
+
+mkdir -p ${work_dir}/etc/tmpfiles.d/
+cat << EOF > ${work_dir}/etc/tmpfiles.d/cpufreq.conf
+w- /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq - - - - 1200000
+w- /sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq - - - - 1008000
+EOF
 
 cat << EOF > elementary-$architecture/cleanup
 #!/bin/bash
