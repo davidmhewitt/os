@@ -108,7 +108,7 @@ apt-get --yes install $packages
 
 groupadd -g 1000 elementary
 
-useradd -m -u 1000 -g 1000 -G sudo,audio,cdrom,dialout,dip,netdev,plugdev,video,elementary -s /bin/bash elementary
+useradd -m -u 1000 -g 1000 -G sudo,elementary -s /bin/bash elementary
 echo "elementary:elementary" | chpasswd
 
 rm -f /third-stage
