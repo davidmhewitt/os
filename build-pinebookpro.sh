@@ -2,8 +2,8 @@
 
 set -e
 
-# Size of .img file to build in MB.
-size=7000
+# Free space on rootfs in MiB
+free_space="500"
 
 rootdir=`pwd`
 basedir=`pwd`/pinebook-pro
@@ -20,7 +20,7 @@ cd ${basedir}
 export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
-apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev xz-utils
+apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev xz-utils coreutils util-linux
 
 wget "https://git.trustedfirmware.org/TF-A/trusted-firmware-a.git/snapshot/trusted-firmware-a-$tfaver.tar.gz"
 wget "ftp://ftp.denx.de/pub/u-boot/u-boot-${ubootver}.tar.bz2"
@@ -198,9 +198,14 @@ EOF
 chmod +x elementary-$architecture/build-initramfs
 LANG=C chroot elementary-$architecture /build-initramfs
 
+# Calculate the space to create the image.
+root_size=$(du -s -B1 ${work_dir} | cut -f1)
+root_extra=$((${root_size}/1024/1000*5*1024/5))
+raw_size=$(($((${free_space}*1024))+${root_extra}
+
 # Create the disk and partition it
 echo "Creating image file"
-dd if=/dev/zero of=${basedir}/${imagename}.img bs=1M count=$size
+fallocate -l $(echo ${raw_size}Ki | numfmt --from=iec-i --to=si) ${basedir}/${imagename}.img
 parted ${imagename}.img --script -- mklabel msdos
 parted ${imagename}.img --script -- mkpart primary ext4 32M 100%
 
