@@ -272,12 +272,13 @@ cp ${rootdir}/pinebookpro/config/alsa/asound.state ${work_dir}/var/lib/alsa/
 install -m 755 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs "${work_dir}/usr/sbin/resizerootfs"
 install -m 644 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs.service "${work_dir}/etc/systemd/system"
 mkdir -p "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/"
-ln -s /etc/systemd/system/resizerootfs.service "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/rpi-resizerootfs.service"
+ln -s /etc/systemd/system/resizerootfs.service "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/resizerootfs.service"
 
 mkdir -p ${work_dir}/etc/tmpfiles.d/
 cat << EOF > ${work_dir}/etc/tmpfiles.d/cpufreq.conf
 w- /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq - - - - 1200000
 w- /sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq - - - - 1008000
+w- /sys/class/devfreq/ff9a0000.gpu/min_freq - - - - 600000000
 EOF
 
 cat << EOF > elementary-$architecture/cleanup
