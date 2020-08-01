@@ -197,13 +197,12 @@ chmod +x elementary-$architecture/build-initramfs
 LANG=C chroot elementary-$architecture /build-initramfs
 
 # Calculate the space to create the image.
-root_size=$(du -s -B1 ${work_dir} | cut -f1)
-root_extra=$((${root_size}/1024/1000*5*1024/5))
-raw_size=$(($((${free_space}*1024))+${root_extra}))
+root_size=$(du -s -B1K ${work_dir} | cut -f1)
+raw_size=$(($((${free_space}*1024))+${root_size}))
 
 # Create the disk and partition it
 echo "Creating image file"
-fallocate -l $(echo ${raw_size}Ki | numfmt --from=iec-i --to=si) ${basedir}/${imagename}.img
+fallocate -l $(echo ${raw_size}Ki | numfmt --from=iec-i --to=si --format=%.1f) ${basedir}/${imagename}.img
 parted ${imagename}.img --script -- mklabel msdos
 parted ${imagename}.img --script -- mkpart primary ext4 32M 100%
 
