@@ -165,6 +165,7 @@ patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0006-bluetooth-btrtl-Make-m
 # ROCKCHIP_VDEC patches
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-Add-rkvdec-driver.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0002-Add-rkvdec-to-dtsi.patch"
+patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-Add-v4l2-h264.patch"
 
 cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.7.config .config
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
