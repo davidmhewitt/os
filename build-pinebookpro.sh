@@ -2,17 +2,25 @@
 
 set -e
 
-# Free space on rootfs in MiB
-free_space="500"
+export packages="elementary-minimal elementary-standard elementary-desktop initramfs-tools linux-firmware"
+export architecture="arm64"
+export codename="focal"
+export channel="daily"
 
-rootdir=`pwd`
-basedir=`pwd`/pinebook-pro
+version=6.0
+YYYYMMDD="$(date +%Y%m%d)"
+imagename=elementaryos-$version-$channel-pinebookpro-$YYYYMMDD
 
 tfaver=2.3
 ubootver=2020.07
 linuxver=5.7.11
 kernsha256="93293032aa13c3998eeb2afd910f11c0f2e8a76ffec46f74ce3fcfac53ed60f1  linux-${linuxver}.tar.xz"
-imagename=elementary-pbp
+
+# Free space on rootfs in MiB
+free_space="500"
+
+rootdir=`pwd`
+basedir=`pwd`/pinebook-pro
 
 mkdir -p ${basedir}
 cd ${basedir}
@@ -52,11 +60,6 @@ cd "${basedir}"
 # Make sure cross-running ARM ELF executables is enabled
 update-binfmts --enable
 
-export packages="elementary-minimal elementary-standard elementary-desktop initramfs-tools linux-firmware"
-export architecture="arm64"
-export codename="focal"
-export channel="daily"
-
 # Working directory
 work_dir="${basedir}/elementary-${architecture}"
 
@@ -64,29 +67,29 @@ work_dir="${basedir}/elementary-${architecture}"
 debootstrap --foreign --arch $architecture $codename elementary-$architecture http://ports.ubuntu.com/ubuntu-ports
 
 # Add the QEMU emulator for running ARM executables
-cp /usr/bin/qemu-arm-static elementary-$architecture/usr/bin/
+cp /usr/bin/qemu-arm-static ${work_dir}/usr/bin/
 
 # Run the second stage of the bootstrap in QEMU
-LANG=C chroot elementary-$architecture /debootstrap/debootstrap --second-stage
+LANG=C chroot ${work_dir} /debootstrap/debootstrap --second-stage
 
 # Add the rest of the ubuntu repos
-cat << EOF > elementary-$architecture/etc/apt/sources.list
+cat << EOF > ${work_dir}/etc/apt/sources.list
 deb http://ports.ubuntu.com/ubuntu-ports $codename main restricted universe multiverse
 deb http://ports.ubuntu.com/ubuntu-ports $codename-updates main restricted universe multiverse
 EOF
 
 # Copy in the elementary PPAs/keys/apt config
-for f in ${rootdir}/etc/config/archives/*.list; do cp -- "$f" "elementary-$architecture/etc/apt/sources.list.d/$(basename -- $f)"; done
-for f in ${rootdir}/etc/config/archives/*.key; do cp -- "$f" "elementary-$architecture/etc/apt/trusted.gpg.d/$(basename -- $f).asc"; done
-for f in ${rootdir}/etc/config/archives/*.pref; do cp -- "$f" "elementary-$architecture/etc/apt/preferences.d/$(basename -- $f)"; done
+for f in ${rootdir}/etc/config/archives/*.list; do cp -- "$f" "${work_dir}/etc/apt/sources.list.d/$(basename -- $f)"; done
+for f in ${rootdir}/etc/config/archives/*.key; do cp -- "$f" "${work_dir}/etc/apt/trusted.gpg.d/$(basename -- $f).asc"; done
+for f in ${rootdir}/etc/config/archives/*.pref; do cp -- "$f" "${work_dir}/etc/apt/preferences.d/$(basename -- $f)"; done
 
 # Set codename/channel in added repos
-sed -i "s/@CHANNEL/$channel/" elementary-$architecture/etc/apt/sources.list.d/*.list*
-sed -i "s/@BASECODENAME/$codename/" elementary-$architecture/etc/apt/sources.list.d/*.list*
+sed -i "s/@CHANNEL/$channel/" ${work_dir}/etc/apt/sources.list.d/*.list*
+sed -i "s/@BASECODENAME/$codename/" ${work_dir}/etc/apt/sources.list.d/*.list*
 
-echo "elementary" > elementary-$architecture/etc/hostname
+echo "elementary" > ${work_dir}/etc/hostname
 
-cat << EOF > elementary-${architecture}/etc/hosts
+cat << EOF > ${work_dir}/etc/hosts
 127.0.0.1       elementary    localhost
 ::1             localhost ip6-localhost ip6-loopback
 fe00::0         ip6-localnet
@@ -95,12 +98,12 @@ ff02::1         ip6-allnodes
 ff02::2         ip6-allrouters
 EOF
 
-mount -t proc proc elementary-$architecture/proc
-mount -o bind /dev/ elementary-$architecture/dev/
-mount -o bind /dev/pts elementary-$architecture/dev/pts
+mount -t proc proc ${work_dir}/proc
+mount -o bind /dev/ ${work_dir}/dev/
+mount -o bind /dev/pts ${work_dir}/dev/pts
 
 # Make a third stage that installs all of the metapackages
-cat << EOF > elementary-$architecture/third-stage
+cat << EOF > ${work_dir}/third-stage
 #!/bin/bash
 apt-get update
 apt-get --yes upgrade
@@ -112,8 +115,8 @@ apt-get --yes remove irqbalance
 rm -f /third-stage
 EOF
 
-chmod +x elementary-$architecture/third-stage
-LANG=C chroot elementary-$architecture /third-stage
+chmod +x ${work_dir}/third-stage
+LANG=C chroot ${work_dir} /third-stage
 
 # Pull in the wifi and bluetooth firmware from manjaro's git repository.
 git clone https://gitlab.manjaro.org/manjaro-arm/packages/community/ap6256-firmware.git
@@ -137,7 +140,6 @@ tar xf "linux-${linuxver}.tar.xz"
 rm "linux-${linuxver}.tar.xz"
 mv "linux-${linuxver}" linux
 
-#git clone https://gitlab.manjaro.org/tsys/linux-pinebook-pro.git --depth 1 linux
 cd linux
 touch .scmversion
 
@@ -187,14 +189,14 @@ ln -s /usr/src/linux source
 cd ${basedir}
 
 # Build the initramfs for our kernel
-cat << EOF > elementary-$architecture/build-initramfs
+cat << EOF > ${work_dir}/build-initramfs
 #!/bin/bash
 update-initramfs -c -k ${kernver}
 rm -f /build-initramfs
 EOF
 
-chmod +x elementary-$architecture/build-initramfs
-LANG=C chroot elementary-$architecture /build-initramfs
+chmod +x ${work_dir}/build-initramfs
+LANG=C chroot ${work_dir} /build-initramfs
 
 # Calculate the space to create the image.
 root_size=$(du -s -B1K ${work_dir} | cut -f1)
@@ -222,10 +224,11 @@ mount ${rootp} "${basedir}"/root
 
 # Create an fstab so that we don't mount / read-only.
 UUID=$(blkid -s UUID -o value ${rootp})
-echo "UUID=$UUID /               ext3    errors=remount-ro 0       1" >> "${basedir}"/elementary-${architecture}/etc/fstab
+echo "UUID=$UUID /               ext4    errors=remount-ro 0       1" >> ${work_dir}/etc/fstab
 
 mkdir ${work_dir}/boot/extlinux/
 
+# U-boot config
 cat << EOF > ${work_dir}/boot/extlinux/extlinux.conf
 LABEL elementary ARM
 KERNEL /boot/Image
@@ -250,6 +253,7 @@ evdev:input:b0003v258Ap001Ee0110-e0,1,2,4,k110,111,112,r0,1,am4,lsfw
 
 EOF
 
+# Mark the keyboard as internal, so that "disable when typing" works for the touchpad
 mkdir -p ${work_dir}/etc/libinput/
 cat << EOF > ${work_dir}/etc/libinput/local-overrides.quirks
 [Pinebook Pro Keyboard]
@@ -260,19 +264,23 @@ MatchProduct=0x001E
 AttrKeyboardIntegration=internal
 EOF
 
+# Make resume from suspend work
 sed -i s/"#SuspendState=mem standby freeze"/"SuspendState=freeze"/g ${work_dir}/etc/systemd/sleep.conf
 
 # Disable ondemand scheduler so we can default to schedutil
 rm ${work_dir}/etc/systemd/system/multi-user.target.wants/ondemand.service
 
+# Make sound work
 mkdir -p ${work_dir}/var/lib/alsa/
 cp ${rootdir}/pinebookpro/config/alsa/asound.state ${work_dir}/var/lib/alsa/
 
+# Add a oneshot service to grow the rootfs on first boot
 install -m 755 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs "${work_dir}/usr/sbin/resizerootfs"
 install -m 644 -o root -g root ${rootdir}/pinebookpro/files/resizerootfs.service "${work_dir}/etc/systemd/system"
 mkdir -p "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/"
 ln -s /etc/systemd/system/resizerootfs.service "${work_dir}/etc/systemd/system/systemd-remount-fs.service.requires/resizerootfs.service"
 
+# Tweak the minimum frequencies of the GPU and CPU governors to get a bit more performance
 mkdir -p ${work_dir}/etc/tmpfiles.d/
 cat << EOF > ${work_dir}/etc/tmpfiles.d/cpufreq.conf
 w- /sys/devices/system/cpu/cpufreq/policy0/scaling_min_freq - - - - 1200000
@@ -280,7 +288,7 @@ w- /sys/devices/system/cpu/cpufreq/policy4/scaling_min_freq - - - - 1008000
 w- /sys/class/devfreq/ff9a0000.gpu/min_freq - - - - 600000000
 EOF
 
-cat << EOF > elementary-$architecture/cleanup
+cat << EOF > ${work_dir}/cleanup
 #!/bin/bash
 
 apt-get install --no-install-recommends -f -q -y git
@@ -302,16 +310,17 @@ rm -f /var/lib/apt/lists/*_Sources
 rm -f /var/lib/apt/lists/*_Translation-*
 EOF
 
-chmod +x elementary-$architecture/cleanup
-LANG=C chroot elementary-$architecture /cleanup
+chmod +x ${work_dir}/cleanup
+LANG=C chroot ${work_dir} /cleanup
 
-umount elementary-$architecture/dev/pts
-umount elementary-$architecture/dev/
-umount elementary-$architecture/proc
+umount ${work_dir}/dev/pts
+umount ${work_dir}/dev/
+umount ${work_dir}/proc
 
 echo "Rsyncing rootfs into image file"
-rsync -HPavz -q "${basedir}"/elementary-${architecture}/ "${basedir}"/root/
+rsync -HPavz -q ${work_dir}/ "${basedir}"/root/
 
+# Flash u-boot into the early sectors of the image
 cp "${basedir}"/u-boot-"${ubootver}"/idbloader.img "${basedir}"/u-boot-"${ubootver}"/u-boot.itb "${basedir}"/root/boot/
 dd if="${basedir}"/u-boot-"${ubootver}"/idbloader.img of=${loopdevice} seek=64 conv=notrunc
 dd if="${basedir}"/u-boot-"${ubootver}"/u-boot.itb of=${loopdevice} seek=16384 conv=notrunc
@@ -333,7 +342,7 @@ SECRET="$2"
 ENDPOINT="$3"
 BUCKET="$4"
 IMGPATH="${basedir}"/${imagename}.img.xz
-IMGNAME=$(basename "$IMGPATH")
+IMGNAME=${channel}/$(basename "$IMGPATH")
 
 apt-get install -y curl python3 python3-distutils
 
