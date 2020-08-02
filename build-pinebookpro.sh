@@ -209,7 +209,13 @@ raw_size=$(($((${free_space}*1024))+${root_size}))
 
 # Create the disk and partition it
 echo "Creating image file"
-fallocate -l $(echo ${raw_size}Ki | numfmt --from=iec-i --to=si --format=%.1f) ${basedir}/${imagename}.img
+
+# Sometimes fallocate fails if the filesystem or location doesn't support it, fallback to slower dd in this case
+if ! fallocate -l $(echo ${raw_size}Ki | numfmt --from=iec-i --to=si --format=%.1f) ${basedir}/${imagename}.img
+then
+    dd if=/dev/zero of=${basedir}/${imagename}.img bs=1024 count=${raw_size}
+fi
+
 parted ${imagename}.img --script -- mklabel msdos
 parted ${imagename}.img --script -- mkpart primary ext4 32M 100%
 
