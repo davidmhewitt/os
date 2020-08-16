@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - no-suspend-patch
       - github-update
   schedule:
     - cron: "0 0 * * *"
