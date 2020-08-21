@@ -1,0 +1,49 @@
+From b83660e0db9ab45733964735d0d392d61b043535 Mon Sep 17 00:00:00 2001
+From: David Hewitt <davidmhewitt@gmail.com>
+Date: Fri, 21 Aug 2020 14:25:54 +0100
+Subject: [PATCH] rockchip: Fix SRAM corruption when loading FIT
+
+---
+ common/spl/spl_fit.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/common/spl/spl_fit.c b/common/spl/spl_fit.c
+index f581a224..e7f379f3 100644
+--- a/common/spl/spl_fit.c
++++ b/common/spl/spl_fit.c
+@@ -252,6 +252,7 @@ static int spl_load_fit_image(struct spl_load_info *info, ulong sector,
+ 	uint8_t image_comp = -1, type = -1;
+ 	const void *data;
+ 	bool external_data = false;
++	bool allocated_bounce_buffer = false;
+ 
+ 	if (IS_ENABLED(CONFIG_SPL_FPGA_SUPPORT) ||
+ 	    (IS_ENABLED(CONFIG_SPL_OS_BOOT) && IS_ENABLED(CONFIG_SPL_GZIP))) {
+@@ -287,6 +288,14 @@ static int spl_load_fit_image(struct spl_load_info *info, ulong sector,
+ 		overhead = get_aligned_image_overhead(info, offset);
+ 		nr_sectors = get_aligned_image_size(info, length, offset);
+ 
++#ifdef CONFIG_ARCH_ROCKCHIP
++		if ((load_ptr < CONFIG_SYS_SDRAM_BASE) ||
++			(load_ptr >= CONFIG_SYS_SDRAM_BASE + SDRAM_MAX_SIZE)) {
++				load_ptr = (ulong)memalign(ARCH_DMA_MINALIGN, nr_sectors * info->bl_len);
++				allocated_bounce_buffer = true;
++		}
++#endif
++
+ 		if (info->read(info,
+ 			       sector + get_aligned_image_offset(info, offset),
+ 			       nr_sectors, (void *)load_ptr) != nr_sectors)
+@@ -329,6 +338,9 @@ static int spl_load_fit_image(struct spl_load_info *info, ulong sector,
+ 		length = size;
+ 	} else {
+ 		memcpy((void *)load_addr, src, length);
++		if (allocated_bounce_buffer) {
++			free(load_ptr);
++		}
+ 	}
+ 
+ 	if (image_info) {
+-- 
+2.25.1
+

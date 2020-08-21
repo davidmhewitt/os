@@ -48,6 +48,8 @@ cd ../u-boot-${ubootver}
 patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0001-Add-regulator-needed-for-usage-of-USB.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0002-Correct-boot-order-to-be-USB-SD-eMMC.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0003-rk3399-light-pinebook-power-and-standby-leds-during-early-boot.patch"
+patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0001-rockchip-Fix-SRAM-corruption-when-loading-FIT.patch"
+
 sed -i s/"CONFIG_BOOTDELAY=3"/"CONFIG_BOOTDELAY=0"/g configs/pinebook-pro-rk3399_defconfig
 
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
