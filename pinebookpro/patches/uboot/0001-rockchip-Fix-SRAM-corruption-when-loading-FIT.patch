@@ -39,7 +39,7 @@ index f581a224..e7f379f3 100644
  	} else {
  		memcpy((void *)load_addr, src, length);
 +		if (allocated_bounce_buffer) {
-+			free(load_ptr);
++			free((void *)load_ptr);
 +		}
  	}
  
