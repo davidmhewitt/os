@@ -1,0 +1,22 @@
+--- /usr/lib/live/build/chroot_hooks	2019-03-11 10:05:11.000000000 +0000
++++ /usr/lib/live/build/chroot_hooks_v2	2020-08-26 15:39:56.070848963 +0000
+@@ -49,6 +49,11 @@
+ mount -o bind config chroot/live-build/config
+ mount -o remount,ro,bind config chroot/live-build/config
+
++# Create a bind mount for the root of the chroot, this allows bubblewrap
++# to work and hence allows installing flatpaks during the hooks to
++# succeed
++mount -o bind chroot chroot
++
+ # Copying hooks
+ for _HOOK in ${LB_CHROOT_HOOKS}
+ do
+@@ -115,5 +120,6 @@
+
+ # Remove bind mount of build config inside chroot.
+ umount chroot/live-build/config
++umount chroot
+ rmdir chroot/live-build/config
+ rmdir chroot/live-build
+
