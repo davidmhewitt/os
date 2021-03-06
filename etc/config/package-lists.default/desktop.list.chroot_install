@@ -3,4 +3,7 @@ elementary-desktop
 elementary-minimal
 elementary-standard
 
+io.elementary.settings-daemon
+io.elementary.initial-setup
+
 @XORG_HWE
