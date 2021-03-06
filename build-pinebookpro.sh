@@ -2,7 +2,7 @@
 
 set -e
 
-export packages="elementary-minimal elementary-standard elementary-desktop initramfs-tools linux-firmware"
+export packages="elementary-minimal initramfs-tools linux-firmware"
 export architecture="arm64"
 export codename="focal"
 export channel="daily"
@@ -13,8 +13,6 @@ imagename=elementaryos-$version-$channel-pinebookpro-$YYYYMMDD
 
 tfaver=2.3
 ubootver=2020.07
-linuxver=5.8.1
-kernsha256="f8d2a4fe938ff7faa565765a52e347e518a0712ca6ddd41b198bd9cc1626a724  linux-${linuxver}.tar.xz"
 
 # Free space on rootfs in MiB
 free_space="500"
@@ -26,6 +24,8 @@ mkdir -p ${basedir}
 cd ${basedir}
 
 export DEBIAN_FRONTEND="noninteractive"
+# Config to stop flash-kernel trying to detect the hardware in chroot
+export FK_MACHINE=none
 
 apt-get update
 apt-get install -y --no-install-recommends python3 bzip2 wget gcc-arm-none-eabi crossbuild-essential-arm64 make bison flex bc device-tree-compiler ca-certificates sed build-essential debootstrap qemu-user-static qemu-utils qemu-system-arm binfmt-support parted kpartx rsync git libssl-dev xz-utils coreutils util-linux
@@ -38,12 +38,16 @@ echo "c1f5bf9ee6bb6e648edbf19ce2ca9452f614b08a9f886f1a566aa42e8cf05f6a u-boot-${
 
 tar xf "trusted-firmware-a-${tfaver}.tar.gz"
 tar xf "u-boot-${ubootver}.tar.bz2"
+rm "trusted-firmware-a-${tfaver}.tar.gz"
+rm "u-boot-${ubootver}.tar.bz2"
+
 cd "trusted-firmware-a-${tfaver}"
 unset CFLAGS CXXFLAGS CPPFLAGS LDFLAGS
 CROSS_COMPILE=aarch64-linux-gnu- make PLAT=rk3399
 cp build/rk3399/release/bl31/bl31.elf ../u-boot-${ubootver}/
 
 cd ../u-boot-${ubootver}
+rm -r "../trusted-firmware-a-${tfaver}"
 
 patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0001-Add-regulator-needed-for-usage-of-USB.patch"
 patch -Np1 -i "${rootdir}/pinebookpro/patches/uboot/0002-Correct-boot-order-to-be-USB-SD-eMMC.patch"
@@ -130,83 +134,35 @@ cp brcmfmac43456-sdio.clm_blob brcm/brcmfmac43456-sdio.clm_blob
 mkdir -p ${work_dir}/lib/firmware/brcm/
 cp -a brcm/* ${work_dir}/lib/firmware/brcm/
 
-# Time to build the kernel
-cd ${work_dir}/usr/src
+cd ..
+rm -r ap6256-firmware
 
-wget "http://www.kernel.org/pub/linux/kernel/v5.x/linux-${linuxver}.tar.xz"
-echo $kernsha256 | sha256sum --check
-
-tar xf "linux-${linuxver}.tar.xz"
-rm "linux-${linuxver}.tar.xz"
-mv "linux-${linuxver}" linux
-
-cd linux
-touch .scmversion
-
-# ALARM patches
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-net-smsc95xx-Allow-mac-address-to-be-set-as-a-parame.patch"     #All
-
-# Manjaro ARM Patches
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0010-arm64-dts-rockchip-add-cw2015-node-to-PBP.patch"                #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0011-fix-wonky-wifi-bt-on-PBP.patch"                                 #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0012-add-suspend-to-rk3399-PBP.patch"                                #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0013-arm64-dts-rockchip-setup-USB-type-c-port-as-dual-dat.patch"     #Pinebook Pro
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0015-add-dp-alt-mode-to-PBP.patch"                                   #Pinebook Pro
-
-# Pinebook patches
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0001-Bluetooth-Add-new-quirk-for-broken-local-ext-features-max_page.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0002-Bluetooth-hci_h5-Add-support-for-reset-GPIO.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0003-dt-bindings-net-bluetooth-Add-rtl8723bs-bluetooth.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0004-Bluetooth-hci_h5-Add-support-for-binding-RTL8723BS-with-device-tree.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0005-Bluetooth-btrtl-add-support-for-the-RTL8723CS.patch"
-patch -Np1 -i "${rootdir}/pinebookpro/patches/kernel/0006-bluetooth-btrtl-Make-more-space-for-config-firmware-file-name.patch"
-
-cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.8.config .config
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- oldconfig
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- -j$(nproc) Image modules
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- DTC_FLAGS="-@" dtbs
-
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_MOD_PATH=${work_dir} modules_install
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- INSTALL_DTBS_PATH="${work_dir}/boot/dtbs" dtbs_install
-
-cp arch/arm64/boot/Image ${work_dir}/boot
-
-# clean up because otherwise we leave stuff around that causes external modules
-# to fail to build.
-make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- mrproper
-cp ${rootdir}/pinebookpro/config/kernel/pinebook-pro-5.8.config .config
-
-# Fix up the symlink for building external modules
-# kernver is used to we don't need to keep track of what the current compiled
-# version is
-kernver=$(ls ${work_dir}/lib/modules)
-cd ${work_dir}/lib/modules/${kernver}/
-rm build
-rm source
-ln -s /usr/src/linux build
-ln -s /usr/src/linux source
-cd ${basedir}
-
-# Build the initramfs for our kernel
-cat << EOF > ${work_dir}/build-initramfs
+# Install kernel
+cat << EOF > ${work_dir}/hardware
 #!/bin/bash
-update-initramfs -c -k ${kernver}
-rm -f /build-initramfs
+
+apt-get --yes install linux-image-unsigned-5.8.0-41-generic
+
+mkdir -p /boot/dtbs
+
+cp -r /lib/firmware/*/device-tree/rockchip /boot/dtbs
+
+rm -f /hardware
 EOF
 
-chmod +x ${work_dir}/build-initramfs
-LANG=C chroot ${work_dir} /build-initramfs
+chmod +x ${work_dir}/hardware
+LANG=C chroot ${work_dir} /hardware
 
-mkdir ${work_dir}/hooks
-cp ${rootdir}/etc/config/hooks/live/*.chroot ${work_dir}/hooks
+# mkdir ${work_dir}/hooks
+# cp ${rootdir}/etc/config/hooks/live/*.chroot ${work_dir}/hooks
 
-for f in ${work_dir}/hooks/*
-do
-    base=`basename ${f}`
-    LANG=C chroot ${work_dir} "/hooks/${base}"
-done
+# for f in ${work_dir}/hooks/*
+# do
+#     base=`basename ${f}`
+#     LANG=C chroot ${work_dir} "/hooks/${base}"
+# done
 
-rm -r "${work_dir}/hooks"
+# rm -r "${work_dir}/hooks"
 
 # Calculate the space to create the image.
 root_size=$(du -s -B1K ${work_dir} | cut -f1)
@@ -247,9 +203,9 @@ mkdir ${work_dir}/boot/extlinux/
 # U-boot config
 cat << EOF > ${work_dir}/boot/extlinux/extlinux.conf
 LABEL elementary ARM
-KERNEL /boot/Image
+KERNEL /boot/vmlinuz
 FDT /boot/dtbs/rockchip/rk3399-pinebook-pro.dtb
-APPEND initrd=/boot/initrd.img-${kernver} console=ttyS2,1500000 console=tty1 root=UUID=${UUID} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60 quiet splash plymouth.ignore-serial-consoles
+APPEND initrd=/boot/initrd.img console=ttyS2,1500000 console=tty1 root=UUID=${UUID} rw rootwait video=eDP-1:1920x1080@60 video=HDMI-A-1:1920x1080@60 quiet splash plymouth.ignore-serial-consoles
 EOF
 cd ${basedir}
 
